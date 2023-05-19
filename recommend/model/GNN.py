@@ -104,7 +104,7 @@ class GNN(object):
         self.inter_pos_rate = args.inter_pos_rate
 
         self.model_type += '_%s_%s_l%d' % (args.adj_type, self.agg_type, self.n_layer)
-    @tf.function
+    # @tf.function
     def _build_inputs(self):
         """Building inputs for interaction, kg, dropout, and attention
         """
@@ -122,33 +122,18 @@ class GNN(object):
 
             # dropout: message dropout (adopted on the convolution operations)
             # Todo: add node dropout
-        self.mess_dropout = tf.compat.v1.placeholder(dtype=tf.float32, shape=[None], name='mess_dropout')
+        self.mess_dropout =tf.keras.Input(dtype=tf.float32, shape=[None], name='mess_dropout')
         print(f"mess_dropout :{self.mess_dropout}")
             # Inputs for attention-aware knowledge update
-        self.A_values = tf.compat.v1.placeholder(dtype=tf.float32, shape=[len(self.all_v_list)], name='A_values')
+        # print(f"All_v_list : {self.all_v_list}")
+        print(f"size of A values : {len(self.all_v_list)}")
         logger.info('finish building inputs')
-        # @tf.function
-        # def return_values():
-        #     self.e = tf.compat.v1.placeholder(tf.int64, shape=[None], name='e')
-        #     self.pos_e = tf.compat.v1.placeholder(tf.int64, shape=[None], name='pos_e')
-        #     self.neg_e = tf.compat.v1.placeholder(tf.int64, shape=[None], name='neg_e')
-
-        #     # inputs for kg
-        #     self.h = tf.compat.v1.placeholder(tf.int64, shape=[None], name='h')
-        #     self.r = tf.compat.v1.placeholder(tf.int64, shape=[None], name='r')
-        #     self.pos_t = tf.compat.v1.placeholder(tf.int64, shape=[None], name='pos_t')
-        #     self.neg_t = tf.compat.v1.placeholder(tf.int64, shape=[None], name='neg_t')
-
-        #     # dropout: message dropout (adopted on the convolution operations)
-        #     # Todo: add node dropout
-        #     self.mess_dropout = tf.compat.v1.placeholder(tf.float32, shape=[None], name='mess_dropout')
-
-        #     # Inputs for attention-aware knowledge update
-        #     self.A_values = tf.compat.v1.placeholder(tf.float32, shape=[len(self.all_v_list)], name='A_values')
-        #     logger.info('finish building inputs')
-        #     return self.e,self.pos_e,self.neg_e,self.h,self.r,self.pos_t,self.neg_t,self.mess_dropout,self.A_values
-        # self.e,self.pos_e,self.neg_e,self.h,self.r,self.pos_t,self.neg_t,self.mess_dropout,self.A_values=return_values()
+        with tf.Graph().as_default():
+            self.A_values =  tf.compat.v1.placeholder(dtype=tf.float32, shape=[len(self.all_v_list)], name='A_values')
+            return self.A_values
+        # print(f"size of A values : {len(self.all_v_list)}")
         
+        # return self.A_values
 
     def _build_weights(self, embedding_type: str) -> None:
         """Building weights placeholder for model parameters.
@@ -382,7 +367,7 @@ class GNN(object):
         neg_scores = tf.reduce_sum(tf.multiply(self.e_e, self.neg_e_e), axis=1, name='gnn_neg_scores')
 
         pos_scores = tf.zeros([current_batch_size], name='gnn_pos_scores')
-        self.trainable_vars = self.trainable_variables
+        # self.trainable_vars = self.trainable_variables
         for i in range(self.inter_pos_rate):
             # generate positive sub batch to calculate pos_scores
             _pos_e_e = self.pos_e_e[i::self.inter_pos_rate]
@@ -404,11 +389,11 @@ class GNN(object):
         # Optimization
         logger.info('adapting {} as optimization function for gnn' .format(self.opt_type))
         if self.opt_type in ['Adam', 'adam']:
-            self.opt = tf.keras.optimizers.Adam(learning_rate=self.lr).minimize(self.loss, var_list=self.trainable_vars)
+            self.opt = tf.keras.optimizers.Adam(learning_rate=self.lr)
         elif self.opt_type in ['SGD', 'sgd']:
-            self.opt = tf.keras.optimizers.SGD(learning_rate=self.lr).minimize(self.loss, var_list=self.trainable_vars)
+            self.opt = tf.keras.optimizers.SGD(learning_rate=self.lr)
         elif self.opt_type in ['AdaDelta']:
-            self.opt = tf.keras.optimizers.Adadelta(learning_rate=self.lr).minimize(self.loss, var_list=self.trainable_vars)
+            self.opt = tf.keras.optimizers.Adadelta(learning_rate=self.lr)
         else:
             logger.error('Optimizer is unknown')
             exit(-1)
@@ -469,12 +454,12 @@ class GNN(object):
         self.A_out = self._create_attentive_A_out()
         logger.info('finish building TransH model.')
 
-    def _create_attentive_A_out(self) -> tf.SparseTensor:
+    def _create_attentive_A_out(self) -> tf.sparse.SparseTensor:
         """Creating attentive A sparse tensor.
         """
         indices = np.mat([self.all_h_list, self.all_t_list]).transpose()
         # normalize the coefficients across triplets
-        return tf.sparse.softmax(tf.SparseTensor(indices, self.A_values, self.A_in.shape))
+        return tf.sparse.softmax(tf.sparse.SparseTensor(indices, self.A_values, self.A_in.shape))
 
     def _generate_transE_score(self, h: tf.Tensor, t: tf.Tensor, r: tf.Tensor) -> tf.Tensor:
         """Calculating TransE score
